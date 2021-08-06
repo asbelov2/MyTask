@@ -1,0 +1,173 @@
+ // Двухчасовка за сутки
+    static async dailyAnalogTag(req, options) {
+        const { device_ids, filename, aliases, start} = options;
+        //const _aliases = ['Inflow_level', 'Emulsion_level', 'Interface_level', 'Sludge_quality'];
+        //const _aliases = ['com_Start_stop_command','Ia','Ib','Ic','Ubc','Uab','Uca','Number_swings','Stroke_length','Count_SKG_1','Count_SKG_2'];
+        const data = {};
+        
+        // const _start = start ? moment(start).toDate() : moment().add(-1, 'day').toDate();
+        // const _end = end ? moment(end).toDate() : new Date();
+
+        _start = start ? moment(start).toDate() : Date.now().toDate().add(-1,'Days').toDate();
+
+        const { locations, devices } = await this.prepareDevices(req, { device_ids });
+
+        const numbers = repository.getList('History', {
+            device_id,
+            alias: {
+                [Op.in]: aliases,
+            },
+            dt: {
+                [Op.between]: [_start, _end],
+            },
+        })
+
+        const excelRows = [];
+        for (const location of locations) {
+            const locDevices = location.devices.filter(x => x.id in device_ids);
+
+            for (const device of locDevices) {
+                const row = [];
+                row.push(`${location.fullname} ${device.Model.name} ${device.name}`);
+                let i=0;
+                for(let i = 0; i < 24; i=i+2) {
+                    row.push(`${i} - ${i+2}`);
+                }
+                excelRows.push(row);
+                for (const alias of aliases) {
+                    // Данные за 2 часа
+                    row = [];
+                    let j=0;
+                    row.push(alias);
+                    for(let i = 0; i < 24; i=i+2) {
+                        filteredNumbers = numbers.filter(x.alias===alias && (moment(x.dt) >= _start + i) && (moment(x.dt) < _start + i + 2));
+                        average = filteredNumbers.reduce((a, b) => (a + b)) / filteredNumbers.length;
+                        row.push(average);
+                    }
+                    excelRows.push(row);
+                }
+                row = [];
+                excelRows.push(row);
+            }
+        }
+
+        // EXCEL
+
+        const workbook = new exceljs.Workbook();
+
+        const sheet = workbook.addWorksheet('DATA');
+
+        /*
+            Шапка
+            Название "Двухчасовка за сутки"
+            Дата
+        */
+        const headRow = ['Двухчасовка за сутки'];
+        sheet.addRow(headRow);
+        headRow = [_start.format('DD-MM-YYYY')];
+        sheet.addRow(headRow);
+
+        for (const row of excelRows) {
+            sheet.addRow(row);
+        }
+
+        sheet.style = {
+            font: {
+                vertical: 'middle',
+                horizontal: 'center',
+            },
+        };
+
+        // STYLE
+        const row = sheet.getRow(1);
+        row.height = 20;
+        row.style = {
+            font: {
+                bold: true,
+                size: 12,
+            },
+        };
+
+        let column = sheet.getColumn(1);
+        column.width = 20;
+        column = sheet.getColumn(2);
+        column.width = 13;
+
+        const gui = uuid.v4();
+        const _filename = filename ? `${filename}.xlsx` : `analog-tags-${gui}.xlsx`;
+        const filePath = path.join(__dirname, '..', 'uploads', 'report', _filename);
+        await Report.createFile(workbook, filePath);
+        await pause(500);
+
+        return { filename: _filename };
+    }
+
+    // Недельная шахматка
+    static async weekly(req, options) {
+        const { device_ids, filename, aliases } = options;
+
+        const data = {};
+        
+        _end = new Date();
+        _start = _end.toDate().add(-1, 'Weeks').toDate();
+
+        const { locations } = await this.prepareDevices(req, { device_ids });
+
+        for (const location of locations) {
+            const locDevices = location.devices; // .filter(x => x.location_id === location.id);
+
+            for (const device of locDevices) {
+                const row = [];
+                row.push(location.fullname);
+                row.push(`${device.Model.name} ${device.name}`);
+            }
+        }
+
+        // EXCEL
+
+        const workbook = new exceljs.Workbook();
+
+        const sheet = workbook.addWorksheet('DATA');
+
+        const firstRow = ['Location', 'Device'];
+
+        for (const alias of aliases) {
+            firstRow.push(alias);
+        }
+
+        sheet.addRow(firstRow);
+
+        for (const row of excelRows) {
+            sheet.addRow(row);
+        }
+
+        sheet.style = {
+            font: {
+                vertical: 'middle',
+                horizontal: 'center',
+            },
+        };
+
+        // STYLE
+        const row = sheet.getRow(1);
+        row.height = 20;
+        row.style = {
+            font: {
+                bold: true,
+                size: 12,
+            },
+        };
+
+        let column = sheet.getColumn(1);
+        column.width = 20;
+        column = sheet.getColumn(2);
+        column.width = 13;
+
+        const gui = uuid.v4();
+        const _filename = filename ? `${filename}.xlsx` : `weekly--${gui}.xlsx`;
+        const filePath = path.join(__dirname, '..', 'uploads', 'report', _filename);
+        await Report.createFile(workbook, filePath);
+        await pause(500);
+
+        return { filename: _filename };
+    }
